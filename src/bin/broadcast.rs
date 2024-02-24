@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use malen::{
-    message::{Body, Message, MessageWriter},
+    message::{Message, MessageWriter},
     node::Node,
     process::process_loop,
 };
@@ -18,10 +18,10 @@ enum Payload {
     BroadcastOk,
     Read,
     ReadOk {
-        messages: Vec<u32>,
+        messages: HashSet<u32>,
     },
     Topology {
-        topology: HashMap<String, Vec<String>>,
+        topology: HashMap<String, HashSet<String>>,
     },
     TopologyOk,
 }
@@ -29,7 +29,8 @@ enum Payload {
 struct BroadcastNode {
     msg_id: usize,
     node_id: String,
-    messages: Vec<u32>,
+    messages: HashSet<u32>,
+    topology: HashMap<String, HashSet<String>>,
 }
 
 impl Node<Payload> for BroadcastNode {
@@ -37,54 +38,37 @@ impl Node<Payload> for BroadcastNode {
         self.node_id = node_id;
     }
 
+    fn get_msg_id(&mut self) -> Option<usize> {
+        self.msg_id += 1;
+
+        Some(self.msg_id)
+    }
+
     fn handle(
         &mut self,
-        input_msg: &Message<Payload>,
+        input_msg: Message<Payload>,
         writer: &mut MessageWriter,
     ) -> anyhow::Result<()> {
-        match &input_msg.body.payload {
+        match input_msg.body.payload {
             Payload::Broadcast { message } => {
-                self.messages.push(*message);
-                let reply = Message {
-                    src: self.node_id.clone(),
-                    dst: input_msg.src.clone(),
-                    body: Body {
-                        msg_id: Some(self.msg_id),
-                        in_reply_to: input_msg.body.msg_id,
-                        payload: Payload::BroadcastOk,
-                    },
-                };
-                self.msg_id += 1;
+                self.messages.insert(message);
+                let reply = input_msg.into_reply(self.get_msg_id(), Payload::BroadcastOk);
                 writer.write_message(&reply)?;
             }
             Payload::BroadcastOk { .. } => {}
             Payload::Read => {
-                let reply = Message {
-                    src: self.node_id.clone(),
-                    dst: input_msg.src.clone(),
-                    body: Body {
-                        msg_id: Some(self.msg_id),
-                        in_reply_to: input_msg.body.msg_id,
-                        payload: Payload::ReadOk {
-                            messages: self.messages.clone(),
-                        },
+                let reply = input_msg.into_reply(
+                    self.get_msg_id(),
+                    Payload::ReadOk {
+                        messages: self.messages.clone(),
                     },
-                };
-                self.msg_id += 1;
+                );
                 writer.write_message(&reply)?;
             }
             Payload::ReadOk { .. } => {}
-            Payload::Topology { topology: _ } => {
-                let reply = Message {
-                    src: self.node_id.clone(),
-                    dst: input_msg.src.clone(),
-                    body: Body {
-                        msg_id: Some(self.msg_id),
-                        in_reply_to: input_msg.body.msg_id,
-                        payload: Payload::TopologyOk,
-                    },
-                };
-                self.msg_id += 1;
+            Payload::Topology { ref topology } => {
+                self.topology = topology.clone();
+                let reply = input_msg.into_reply(self.get_msg_id(), Payload::TopologyOk);
                 writer.write_message(&reply)?;
             }
             Payload::TopologyOk { .. } => {}
@@ -97,7 +81,8 @@ fn main() -> anyhow::Result<()> {
     let mut node = BroadcastNode {
         msg_id: 0,
         node_id: "0".to_string(),
-        messages: Vec::new(),
+        messages: HashSet::new(),
+        topology: HashMap::new(),
     };
 
     process_loop(&mut node)

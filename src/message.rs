@@ -5,9 +5,22 @@ use std::io::{StdoutLock, Write};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message<P> {
     pub src: String,
-    #[serde(rename = "dest")]
-    pub dst: String,
+    pub dest: String,
     pub body: Body<P>,
+}
+
+impl<P> Message<P> {
+    pub fn into_reply(self, msg_id: Option<usize>, payload: P) -> Self {
+        Message {
+            src: self.dest,
+            dest: self.src,
+            body: Body {
+                msg_id,
+                in_reply_to: self.body.msg_id,
+                payload,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

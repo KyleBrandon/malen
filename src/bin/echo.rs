@@ -1,5 +1,5 @@
 use malen::{
-    message::{Body, Message, MessageWriter},
+    message::{Message, MessageWriter},
     node::Node,
     process::process_loop,
 };
@@ -24,24 +24,22 @@ impl Node<Payload> for EchoNode {
         self.node_id = node_id;
     }
 
+    fn get_msg_id(&mut self) -> Option<usize> {
+        self.msg_id += 1;
+
+        Some(self.msg_id)
+    }
+
     fn handle(
         &mut self,
-        input_msg: &Message<Payload>,
+        input_msg: Message<Payload>,
         writer: &mut MessageWriter,
     ) -> anyhow::Result<()> {
         match &input_msg.body.payload {
             Payload::Echo { echo } => {
-                let reply = Message {
-                    src: self.node_id.clone(),
-                    dst: input_msg.src.clone(),
-                    body: Body {
-                        msg_id: Some(self.msg_id),
-                        in_reply_to: input_msg.body.msg_id,
-                        payload: Payload::EchoOk { echo: echo.clone() },
-                    },
-                };
+                let payload = Payload::EchoOk { echo: echo.clone() };
+                let reply = input_msg.into_reply(self.get_msg_id(), payload);
                 writer.write_message(&reply)?;
-                self.msg_id += 1;
             }
             Payload::EchoOk { .. } => {}
         };
