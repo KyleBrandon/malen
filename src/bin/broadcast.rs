@@ -43,31 +43,12 @@ struct BroadcastNode {
     node_id: String,
     messages: HashSet<usize>,
     topology: HashSet<String>,
+    tx: Option<std::sync::mpsc::Sender<Message<Payload>>>,
 }
 
 impl Node<Payload> for BroadcastNode {
-    fn init(&mut self, node_id: String, msg_channel: std::sync::mpsc::Sender<Message<Payload>>) {
-        self.node_id = node_id.clone();
-
-        std::thread::spawn(move || {
-            // generate gossip events
-            // TODO: handle EOF signal
-            loop {
-                std::thread::sleep(Duration::from_millis(300));
-                let gossip = Message {
-                    src: node_id.clone(),
-                    dest: node_id.clone(),
-                    body: Body {
-                        msg_id: None,
-                        in_reply_to: None,
-                        payload: Payload::GossipSend,
-                    },
-                };
-                if msg_channel.send(gossip).is_err() {
-                    return Ok::<_, anyhow::Error>(());
-                }
-            }
-        });
+    fn init(&mut self, tx: std::sync::mpsc::Sender<Message<Payload>>) {
+        self.tx = Some(tx);
     }
 
     fn get_msg_id(&mut self) -> Option<usize> {
@@ -87,6 +68,28 @@ impl Node<Payload> for BroadcastNode {
                 node_ids: _,
             } => {
                 self.node_id = node_id.clone();
+
+                let node_id = self.node_id.clone();
+                let tx = self.tx.clone().unwrap();
+                std::thread::spawn(move || {
+                    // generate gossip events
+                    // TODO: handle EOF signal
+                    loop {
+                        std::thread::sleep(Duration::from_millis(300));
+                        let gossip = Message {
+                            src: node_id.clone(),
+                            dest: node_id.clone(),
+                            body: Body {
+                                msg_id: None,
+                                in_reply_to: None,
+                                payload: Payload::GossipSend,
+                            },
+                        };
+                        if tx.send(gossip).is_err() {
+                            return Ok::<_, anyhow::Error>(());
+                        }
+                    }
+                });
                 let reply = input_msg.into_reply(self.get_msg_id(), Payload::InitOk);
 
                 writer.write_message(&reply)?;
@@ -94,7 +97,21 @@ impl Node<Payload> for BroadcastNode {
 
             Payload::InitOk => panic!("Unexpected InitOk message"),
             Payload::GossipSend => {
-                //
+                for dest_id in self.topology.iter() {
+                    let gossip = Message {
+                        src: self.node_id.clone(),
+                        dest: dest_id.clone(),
+                        body: Body {
+                            msg_id: None,
+                            in_reply_to: None,
+                            payload: Payload::Gossip {
+                                messages: self.messages.clone(),
+                            },
+                        },
+                    };
+
+                    writer.write_message(&gossip)?;
+                }
             }
             Payload::Gossip { messages } => {
                 self.messages.extend(messages);
@@ -135,6 +152,7 @@ fn main() -> anyhow::Result<()> {
         node_id: "0".to_string(),
         messages: HashSet::new(),
         topology: HashSet::new(),
+        tx: None,
     };
 
     process_loop(&mut node)

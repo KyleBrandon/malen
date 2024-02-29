@@ -27,10 +27,7 @@ struct GenerateNode {
 }
 
 impl Node<Payload> for GenerateNode {
-    fn init(&mut self, node_id: String, _: std::sync::mpsc::Sender<Message<Payload>>) {
-        self.node_id = node_id;
-    }
-
+    fn init(&mut self, _tx: std::sync::mpsc::Sender<Message<Payload>>) {}
     fn get_msg_id(&mut self) -> Option<usize> {
         self.msg_id += 1;
 

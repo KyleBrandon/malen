@@ -11,6 +11,7 @@ where
     P: DeserializeOwned + Send + 'static,
 {
     let (tx, rx) = std::sync::mpsc::channel();
+    let tx_node = tx.clone();
     let thread = std::thread::spawn(move || {
         let mut reader = MessageReader::new();
 
@@ -31,6 +32,7 @@ where
     });
 
     let mut writer = MessageWriter::new();
+    node.init(tx_node);
 
     for input in rx {
         node.handle(input, &mut writer)
