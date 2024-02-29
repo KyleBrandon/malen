@@ -10,8 +10,17 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
 enum Payload {
-    Echo { echo: String },
-    EchoOk { echo: String },
+    Init {
+        node_id: String,
+        node_ids: Vec<String>,
+    },
+    InitOk,
+    Echo {
+        echo: String,
+    },
+    EchoOk {
+        echo: String,
+    },
 }
 
 struct EchoNode {
@@ -20,7 +29,7 @@ struct EchoNode {
 }
 
 impl Node<Payload> for EchoNode {
-    fn init(&mut self, node_id: String) {
+    fn init(&mut self, node_id: String, _: std::sync::mpsc::Sender<Message<Payload>>) {
         self.node_id = node_id;
     }
 
@@ -35,10 +44,22 @@ impl Node<Payload> for EchoNode {
         input_msg: Message<Payload>,
         writer: &mut MessageWriter,
     ) -> anyhow::Result<()> {
-        match &input_msg.body.payload {
-            Payload::Echo { echo } => {
-                let payload = Payload::EchoOk { echo: echo.clone() };
-                let reply = input_msg.into_reply(self.get_msg_id(), payload);
+        match input_msg.body.payload {
+            Payload::Init {
+                ref node_id,
+                node_ids: _,
+            } => {
+                self.node_id = node_id.clone();
+                let reply = input_msg.into_reply(self.get_msg_id(), Payload::InitOk);
+
+                writer.write_message(&reply)?;
+            }
+
+            Payload::InitOk => panic!("Unexpected InitOk message"),
+            Payload::Echo { ref echo } => {
+                let echo_reply = echo.clone();
+                let reply =
+                    input_msg.into_reply(self.get_msg_id(), Payload::EchoOk { echo: echo_reply });
                 writer.write_message(&reply)?;
             }
             Payload::EchoOk { .. } => {}

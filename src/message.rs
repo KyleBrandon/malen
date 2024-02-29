@@ -1,6 +1,6 @@
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
-use std::io::{StdoutLock, Write};
+use std::io::{BufRead, StdoutLock, Write};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message<P> {
@@ -57,6 +57,28 @@ impl MessageWriter {
 }
 
 impl Default for MessageWriter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub struct MessageReader {
+    lines: std::io::Lines<std::io::StdinLock<'static>>,
+}
+
+impl MessageReader {
+    pub fn new() -> Self {
+        let stdin = std::io::stdin().lock();
+        let lines = stdin.lines();
+        MessageReader { lines }
+    }
+
+    pub fn lines(&mut self) -> &mut std::io::Lines<std::io::StdinLock<'static>> {
+        &mut self.lines
+    }
+}
+
+impl Default for MessageReader {
     fn default() -> Self {
         Self::new()
     }
