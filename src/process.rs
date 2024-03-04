@@ -8,7 +8,7 @@ use serde::de::DeserializeOwned;
 pub fn process_loop<N, P>(node: &mut N) -> anyhow::Result<()>
 where
     N: Node<P> + Send,
-    P: DeserializeOwned + Send + 'static,
+    P: DeserializeOwned + Clone + Send + 'static,
 {
     let (tx, rx) = std::sync::mpsc::channel();
     let tx_node = tx.clone();
