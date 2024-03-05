@@ -24,6 +24,8 @@ where
     Payload: Send + Clone + 'static,
     T: std::cmp::Eq + std::hash::Hash + Clone,
 {
+    node_id: String,
+    node_ids: Vec<String>,
     gossips_sent: HashMap<usize, HashSet<T>>,
     stale_gossips_sent: HashSet<usize>,
     verified: HashMap<String, HashSet<T>>,
@@ -37,6 +39,8 @@ where
 {
     pub fn new(tx: Sender<Message<Payload>>) -> Self {
         Self {
+            node_id: "0".to_string(),
+            node_ids: Vec::new(),
             gossips_sent: HashMap::new(),
             stale_gossips_sent: HashSet::new(),
             verified: HashMap::new(),
@@ -44,7 +48,14 @@ where
         }
     }
 
-    pub fn create_gossip_monitor(&self, node_id: String, payload: Payload) {
+    pub fn create_gossip_monitor(
+        &mut self,
+        node_id: String,
+        node_ids: Vec<String>,
+        payload: Payload,
+    ) {
+        self.node_id = node_id.clone();
+        self.node_ids = node_ids.clone();
         let tx = self.tx.clone();
         std::thread::spawn(move || loop {
             std::thread::sleep(Duration::from_millis(5000));
@@ -63,7 +74,12 @@ where
         });
     }
 
-    pub fn prune_stale_sent_gossips(&mut self) {
+    pub fn prune_stale_sent_gossips(
+        &mut self,
+        dest_id: &str,
+        msg_id: usize,
+        values: &HashSet<T>,
+    ) -> HashSet<T> {
         // check for stale gossip messages
         let current_gossip_msg_ids = self
             .gossips_sent
@@ -82,14 +98,6 @@ where
             .keys()
             .cloned()
             .collect::<HashSet<usize>>();
-    }
-
-    pub fn get_messages_to_send(
-        &mut self,
-        dest_id: &str,
-        msg_id: usize,
-        values: &HashSet<T>,
-    ) -> HashSet<T> {
         let gossip_messages: HashSet<T> = values
             .difference(self.verified.get(dest_id).unwrap_or(&HashSet::new()))
             .cloned()

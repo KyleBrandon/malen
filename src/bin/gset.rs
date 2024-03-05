@@ -64,8 +64,12 @@ impl Node<Payload> for GSetNode {
                 self.node_id = node_id.clone();
                 self.node_ids = node_ids.clone();
 
-                if let Some(manager) = &self.gossip_manager {
-                    manager.create_gossip_monitor(self.node_id.clone(), Payload::GossipSend);
+                if let Some(manager) = &mut self.gossip_manager {
+                    manager.create_gossip_monitor(
+                        self.node_id.clone(),
+                        self.node_ids.clone(),
+                        Payload::GossipSend,
+                    );
                 }
 
                 let reply = input_msg.into_reply(self.get_msg_id(), Payload::InitOk);
@@ -101,9 +105,8 @@ impl Node<Payload> for GSetNode {
                     let msg_id = self.get_msg_id().expect("No message id");
 
                     if let Some(manager) = &mut self.gossip_manager {
-                        manager.prune_stale_sent_gossips();
                         let gossip_messages =
-                            manager.get_messages_to_send(&dest_id, msg_id, &self.values);
+                            manager.prune_stale_sent_gossips(&dest_id, msg_id, &self.values);
                         if gossip_messages.is_empty() {
                             tracing::info!("No gossip messages to send to {}", &dest_id);
                             continue;
