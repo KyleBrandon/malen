@@ -28,7 +28,7 @@ where
     node_ids: Vec<String>,
     gossips_sent: HashMap<usize, HashSet<T>>,
     stale_gossips_sent: HashSet<usize>,
-    verified: HashMap<String, HashSet<T>>,
+    verified: HashMap<String, Vec<T>>,
     tx: Sender<Message<Payload>>,
 }
 
@@ -78,14 +78,15 @@ where
         &mut self,
         dest_id: &str,
         msg_id: usize,
-        values: &HashSet<T>,
-    ) -> HashSet<T> {
+        values: &Vec<T>,
+    ) -> Vec<T> {
         // check for stale gossip messages
         let current_gossip_msg_ids = self
             .gossips_sent
             .keys()
             .cloned()
             .collect::<HashSet<usize>>();
+        // remove any gossips that have not been responded to
         self.stale_gossips_sent
             .intersection(&current_gossip_msg_ids)
             .for_each(|msg_id| {
@@ -93,13 +94,23 @@ where
                 self.gossips_sent.remove(msg_id);
             });
 
+        // update the stale gossips with the current list of outstanding gossips
         self.stale_gossips_sent = self
             .gossips_sent
             .keys()
             .cloned()
             .collect::<HashSet<usize>>();
-        let gossip_messages: HashSet<T> = values
-            .difference(self.verified.get(dest_id).unwrap_or(&HashSet::new()))
+
+        // only send messages that we know the destination does not have
+        let gossip_messages: Vec<T> = values
+            .iter()
+            .filter(|v| {
+                !self
+                    .verified
+                    .get(dest_id)
+                    .unwrap_or(&Vec::new())
+                    .contains(v)
+            })
             .cloned()
             .collect();
 
@@ -112,7 +123,7 @@ where
         gossip_messages
     }
 
-    pub fn verify_messages(&mut self, src: &str, messages: HashSet<T>) {
+    pub fn verify_messages(&mut self, src: &str, messages: Vec<T>) {
         self.verified
             .entry(src.to_string())
             .or_default()

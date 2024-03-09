@@ -105,8 +105,9 @@ impl Node<Payload> for GSetNode {
                     let msg_id = self.get_msg_id().expect("No message id");
 
                     if let Some(manager) = &mut self.gossip_manager {
+                        let hash: Vec<usize> = self.values.iter().cloned().collect();
                         let gossip_messages =
-                            manager.prune_stale_sent_gossips(&dest_id, msg_id, &self.values);
+                            manager.prune_stale_sent_gossips(&dest_id, msg_id, &hash);
                         if gossip_messages.is_empty() {
                             tracing::info!("No gossip messages to send to {}", &dest_id);
                             continue;
@@ -120,7 +121,10 @@ impl Node<Payload> for GSetNode {
                                 msg_id: Some(msg_id),
                                 in_reply_to: None,
                                 payload: Payload::Gossip {
-                                    messages: gossip_messages,
+                                    messages: gossip_messages
+                                        .iter()
+                                        .cloned()
+                                        .collect::<HashSet<usize>>(),
                                 },
                             },
                         };
@@ -140,7 +144,10 @@ impl Node<Payload> for GSetNode {
                 self.values.extend(messages);
 
                 if let Some(manager) = &mut self.gossip_manager {
-                    manager.verify_messages(&input_msg.src, messages.clone());
+                    manager.verify_messages(
+                        &input_msg.src,
+                        messages.iter().cloned().collect::<Vec<usize>>(),
+                    );
 
                     let reply = input_msg.into_reply(self.get_msg_id(), Payload::GossipOk);
                     writer.write_message(&reply)?;
